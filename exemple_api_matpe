@@ -1,0 +1,172 @@
+composer.json:
+-----------------------
+"require": {
+        "guzzlehttp/guzzle": "4.2.*@dev",
+        "guzzlehttp/guzzle-services": "0.3.*@dev"
+}
+
+config l’API de MaTpe :
+----------------------------
+matpe:
+    api_login:    123456
+    api_password: 123456789
+    account:      email@example.com
+    firm_id:      123456
+    app_name:     MonApp
+
+
+MaTpeClient:
+----------------------------------------------
+<?php
+namespace MyBundle\Service;
+use GuzzleHttp\Client;
+use GuzzleHttp\Command\Guzzle\Description;
+use GuzzleHttp\Command\Guzzle\GuzzleClient;
+use Symfony\Component\OptionsResolver\OptionsResolver;
+use Symfony\Component\OptionsResolver\OptionsResolverInterface;
+class MaTpeClient extends GuzzleClient
+{
+    public function __construct(array $matpe = [], array $config = [])
+    {
+        $resolver = new OptionsResolver();
+        $this->configureOptionResolver($resolver);
+ 
+        // validation des paramètres 
+        $options = $resolver->resolve($matpe);
+ 
+        // initialisation du client standard Guzzle
+        $client = new Client([
+            "defaults" => [
+                // headers attendus par MaTpe
+                "headers" => [
+                    "User-Agent" => sprintf("%s (%s)", $options["app_name"], $options["account"]),
+                    "Content-type" => "application/json; charset=utf-8"
+                ],
+                // authentification http basique
+                "auth" => [ $options["api_login"], $options["api_password"] ],
+            ],
+            "base_url" => [
+                $options["base_url"],
+                [ "firm_id" => $options["firm_id"] ]
+            ]
+        ]);
+ 
+        // définition des requètes supportées par notre service
+        $description = new Description([
+            "name" => 'MaTpe',
+            "description" => "Exemple d'API MaTpe avec Guzzle",
+            // list des opérations supportées
+            "operations" => [
+                // pour commencer, une simple récupération de la liste des clients
+                "getCustomers" => [
+                    "httpMethod" => "GET",
+                    // l'uri est ajoutée à notre base_url définie par défaut
+                    "uri"=> "customers.json",
+                    // la réponse attendue sera traitée avec le model jsonResponse, 
+                    // déclaré plus bas dans "models"
+                    "responseModel" => "jsonResponse",
+                    // par défaut tout paramètre additionnel passé à cette requète
+                    // sera envoyé dans le query_string de l'url appelée
+                    "additionalParameters" => [
+                        "location" => "query"
+                    ]
+                ],
+                // récupération d'un client à partir de son id
+                "getCustomer" => [
+                    "httpMethod" => "GET",
+                    // pour la récupération d'un client spécifique l'id est dans l'uri
+                    "uri" => "customers/{id}.json",
+                    "responseModel" => "jsonResponse",
+                    // on spécifie ici que le paramètre id est obligatoire et se trouve dans l'uri
+                    "parameters" => [
+                        "id" => [
+                            "required" => true,
+                            "location" => "uri"
+                        ]
+                    ]
+                ],
+                "createCustomer" => [
+                    "httpMethod" => "POST",
+                    "uri"=> "customers.json",
+                    "responseModel" => "jsonResponse",
+                    // pour la création, company_name est obligatoire, envoyé en json
+                    "parameters" => [
+                        "company_name" => [
+                            "required" => true,
+                            "location" => "json",
+                        ]
+                    ],
+                    // les autres paramètres sont facultatifs, également envoyés en json
+                    "additionalParameters" => [
+                        "location" => "json"
+                    ]
+                ],
+                "updateCustomer" => [
+                    "httpMethod" => "PATCH",
+                    "uri"=> "customer/{id}.json",
+                    "responseModel" => "jsonResponse",
+                    "parameters" => [
+                        "id" => [
+                            "required" => true,
+                            "location" => "json",
+                        ]
+                    ],
+                    "additionalParameters" => [
+                        "location" => "json"
+                    ]
+                ]
+            ],
+            // les models permettent de définir le traitement appliqué aux réponses de l'API
+            // on spécifie ici que l'on veut un objet php à partir du json contenu dans la réponse
+            "models" => [
+                "jsonResponse" => [
+                    "type" => "object",
+                    "additionalProperties" => [
+                        "location" => "json"
+                    ]
+                ]
+            ]
+        ]);
+ 
+        parent::__construct($client, $description, $config);
+    }
+    
+    protected function configureOptionResolver(OptionsResolverInterface $resolver)
+    {
+        $resolver
+            ->setDefaults([
+                'base_url' => 'https://www.facturation.pro/firms/{firm_id}/',
+            ])
+            ->setRequired([
+                'api_login',
+                'api_password',
+                'account',
+                'firm_id',
+                'app_name',
+            ])
+        ;
+    }
+}
+
+
+Ajoutons la dénition du service:
+------------------------------------
+<service id="matpe_client" class="Acme\Bundle\MyBundle\Service\MaTpeClient">
+    <argument>%matpe%</argument>
+</service>
+
+Utilisation de client:
+--------------------------------------
+$matpe = $container->get('matpe_client');
+$newCustomer = $matpe->createCustomer([
+    "company_name" => "Acme Corp.",
+    "first_name" => "Tex",
+    "last_name" => "Avery"
+]);
+printf('%s %s, %s : %s', $newCustomer['first_name'], $newCustomer['last_name'], $newCustomer['company_name'], $newCustomer['id']);
+// Tex Avery, Acme Corp. : 232323
+ 
+$customer = $matpe->getCustomer([ "id" => $newCustomer['id'] ]);
+printf('%s %s, %s', $customer['first_name'], $customer['last_name'], $customer['company_name']);
+// Tex Avery, Acme Corp.
+$customers = $matpe->getCustomers();
