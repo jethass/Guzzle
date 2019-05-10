@@ -1,0 +1,65 @@
+use GuzzleHttp\Client;
+use GuzzleHttp\Psr7\Request;
+use GuzzleHttp\Exception\RequestException;
+use Psr\Http\Message\ResponseInterface;
+
+$client = new Client([
+    // Base URI is used with relative requests
+    'base_uri' => 'http://httpbin.org',
+]);
+
+$headers = ['X-Foo' => 'Bar'];
+$body = 'Hello!';
+$request = new Request('HEAD', 'http://httpbin.org/head', $headers, $body);
+
+
+$request = new Request('PUT', 'http://httpbin.org/put');
+$response = $client->send($request, ['timeout' => 2]);
+
+
+Query String Parameters
+-----------------------------
+$response = $client->request('GET', 'http://httpbin.org?foo=bar');
+ou
+$client->request('GET', 'http://httpbin.org', [
+    'query' => ['foo' => 'bar']
+]);
+
+
+POST/Form Requests
+---------------------------------
+$response = $client->request('POST', 'http://httpbin.org/post', [
+    'multipart' => [
+        [
+            'name'     => 'field_name',
+            'contents' => 'abc'
+        ],
+        [
+            'name'     => 'file_name',
+            'contents' => fopen('/path/to/file', 'r')
+        ],
+        [
+            'name'     => 'other_file',
+            'contents' => 'hello',
+            'filename' => 'filename.txt',
+            'headers'  => [
+                'X-Foo' => 'this is an extra header to include'
+            ]
+        ]
+    ]
+]);
+
+Exceptions
+----------------------
+use GuzzleHttp\Psr7;
+use GuzzleHttp\Exception\RequestException;
+
+try {
+    $client->request('GET', 'https://github.com/_abc_123_404');
+} catch (RequestException $e) {
+    echo Psr7\str($e->getRequest());
+    if ($e->hasResponse()) {
+        echo Psr7\str($e->getResponse());
+    }
+}
+
